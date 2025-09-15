@@ -19,6 +19,17 @@ interface ScoreAnimation {
   timestamp: number;
 }
 
+type GameMode = 'endless' | 'timeattack' | 'movechallenge';
+
+interface GameState {
+  mode: GameMode;
+  timeLeft: number;
+  movesLeft: number;
+  targetScore: number;
+  isGameOver: boolean;
+  isGameWon: boolean;
+}
+
 const DesktopSlidePuzzle = () => {
   const [grid, setGrid] = useState<(Tile | null)[][]>([]);
   const [score, setScore] = useState(0);
@@ -28,22 +39,46 @@ const DesktopSlidePuzzle = () => {
   const [animatingTiles, setAnimatingTiles] = useState(new Set<string>());
   const [scoreAnimation, setScoreAnimation] = useState<ScoreAnimation | null>(null);
   const [comboCount, setComboCount] = useState(0);
+  const [cyberMode, setCyberMode] = useState(false);
+  const [gameState, setGameState] = useState<GameState>({
+    mode: 'endless',
+    timeLeft: 180, // 3分
+    movesLeft: 50,
+    targetScore: 5000,
+    isGameOver: false,
+    isGameWon: false
+  });
 
   const GRID_SIZE = 8;
-  // 落ち着いた色合いで視認性の高いパレット
-  const COLORS = [
-    '#2563EB', // 深い青
-    '#DC2626', // 深い赤  
-    '#059669', // 深い緑
-    '#D97706', // 深いオレンジ
-    '#7C3AED', // 深い紫
-    '#DB2777', // 深いピンク
-    '#0891B2', // 深いシアン
-    '#65A30D', // 深いライム
+
+  // パステル調で気持ちの良い色パレット
+  const NORMAL_COLORS = [
+    '#3B82F6', // 明るい青
+    '#EF4444', // 鮮やかな赤
+    '#10B981', // エメラルドグリーン
+    '#F59E0B', // 温かいオレンジ
+    '#8B5CF6', // 優雅な紫
+    '#EC4899', // 愛らしいピンク
+    '#06B6D4', // 明るいシアン
+    '#84CC16', // 生き生きとしたライム
   ];
 
-  // グリッドを初期化
-  const initializeGrid = useCallback(() => {
+  // サイバーモード用ネオンカラー 🔥
+  const CYBER_COLORS = [
+    '#00FFFF', // エレクトリックシアン
+    '#FF0080', // ホットピンク
+    '#00FF41', // ネオングリーン
+    '#FF4500', // エレクトリックオレンジ
+    '#8A2BE2', // ブルーバイオレット
+    '#FFFF00', // エレクトリックイエロー
+    '#FF1493', // ディープピンク
+    '#00CED1', // ダークターコイズ
+  ];
+
+  const COLORS = cyberMode ? CYBER_COLORS : NORMAL_COLORS;
+
+  // ゲームモードを開始
+  const startGame = useCallback((mode: GameMode) => {
     const newGrid: (Tile | null)[][] = [];
     for (let i = 0; i < GRID_SIZE; i++) {
       const row: (Tile | null)[] = [];
@@ -62,13 +97,97 @@ const DesktopSlidePuzzle = () => {
     setSelectedTiles([]);
     setComboCount(0);
     setGameStarted(true);
+
+    // ゲームモード設定
+    setGameState({
+      mode,
+      timeLeft: mode === 'timeattack' ? 180 : 0,
+      movesLeft: mode === 'movechallenge' ? 50 : 0,
+      targetScore: mode === 'timeattack' ? 5000 : mode === 'movechallenge' ? 3000 : 0,
+      isGameOver: false,
+      isGameWon: false
+    });
   }, []);
+
+  // タイマー処理
+  useEffect(() => {
+    if (gameStarted && gameState.mode === 'timeattack' && gameState.timeLeft > 0 && !gameState.isGameOver && !gameState.isGameWon) {
+      const timer = setInterval(() => {
+        setGameState(prev => {
+          const newTimeLeft = prev.timeLeft - 1;
+          if (newTimeLeft <= 0) {
+            return { ...prev, timeLeft: 0, isGameOver: true };
+          }
+          return { ...prev, timeLeft: newTimeLeft };
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [gameStarted, gameState.mode, gameState.timeLeft, gameState.isGameOver, gameState.isGameWon]);
+
+  // ゲームクリア・ゲームオーバー判定
+  useEffect(() => {
+    if (!gameStarted || gameState.isGameOver || gameState.isGameWon) return;
+
+    if (gameState.mode === 'timeattack') {
+      if (score >= gameState.targetScore) {
+        setGameState(prev => ({ ...prev, isGameWon: true }));
+        playSound('combo'); // 勝利音
+      } else if (gameState.timeLeft <= 0) {
+        setGameState(prev => ({ ...prev, isGameOver: true }));
+      }
+    } else if (gameState.mode === 'movechallenge') {
+      if (score >= gameState.targetScore) {
+        setGameState(prev => ({ ...prev, isGameWon: true }));
+        playSound('combo');
+      } else if (moves >= 50) {
+        setGameState(prev => ({ ...prev, isGameOver: true, movesLeft: 0 }));
+      } else {
+        setGameState(prev => ({ ...prev, movesLeft: 50 - moves }));
+      }
+    }
+  }, [score, moves, gameState, gameStarted]);
+
+  // グリッドを初期化（後方互換性のため残す）
+  const initializeGrid = useCallback(() => startGame('endless'), [startGame]);
+
+  // 効果音を再生
+  const playSound = (type: 'match' | 'combo' | 'slide') => {
+    try {
+      const audio = new Audio();
+      switch (type) {
+        case 'match':
+          // 消去音 - 高めの澄んだ音
+          audio.src = 'data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEASAAAEAIAABAAAAACAAEAAGF0YQoGAACBhYqHbF1fdJitrJBhNjVgodDbq2EcBj+a2/LDciUDQxtf2dhGPEIFRa29m9JKQEP7Gp3wP3Zg/ZdT5+7jqe8LxGb0RXHm8AZKCAsHVJCqm3Og';
+          break;
+        case 'combo':
+          // コンボ音 - 明るい和音
+          audio.src = 'data:audio/wav;base64,UklGRj4DAABXQVZFZm10IBAAAAABAAEAESsAAIhYAQACABAAZGF0YQoGAACBhYqHbF1fdJitrJBhNjVgodDbq2EcBj+a2/LDciUD';
+          break;
+        case 'slide':
+          // スライド音 - 短いクリック音
+          audio.src = 'data:audio/wav;base64,UklGRi4CAABXQVZFZm10IBAAAAABAAEAESsAAGjvAAACABAAZGF0YWoBAACBhYqHbF1fdJitrJBhNjVgodDbq2EcBj+a2/LDciUD';
+          break;
+      }
+      audio.volume = 0.3;
+      audio.play().catch(() => {}); // エラーは無視
+    } catch (error) {
+      // 音声再生エラーは無視
+    }
+  };
 
   // スコア演出を追加
   const addScore = (points, matchCount) => {
     const bonus = comboCount > 0 ? comboCount * 50 : 0;
     const totalPoints = points + bonus;
-    
+
+    // 効果音再生
+    if (comboCount > 0) {
+      playSound('combo');
+    } else {
+      playSound('match');
+    }
+
     setScore(prev => prev + totalPoints);
     setScoreAnimation({
       points: totalPoints,
@@ -76,7 +195,7 @@ const DesktopSlidePuzzle = () => {
       combo: comboCount,
       timestamp: Date.now()
     });
-    
+
     // アニメーションを3秒後にクリア
     setTimeout(() => {
       setScoreAnimation(null);
@@ -244,6 +363,7 @@ const DesktopSlidePuzzle = () => {
 
       // スライド処理
       const direction = getSlideDirection(firstTile, { row, col });
+      playSound('slide'); // スライド音を再生
       slideColors(firstTile, { row, col }, direction);
       setSelectedTiles([]);
       setMoves(prev => prev + 1);
@@ -343,12 +463,38 @@ const DesktopSlidePuzzle = () => {
   }, [grid, gameStarted, checkMatches]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-100 to-slate-300 p-8">
+    <div className={`min-h-screen p-8 transition-all duration-1000 ${
+      cyberMode
+        ? 'bg-gradient-to-br from-black via-gray-900 to-purple-900'
+        : 'bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50'
+    }`}>
       <div className="max-w-6xl mx-auto">
         
         {/* ヘッダー */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-slate-800 mb-6">Slide Puzzle Pro</h1>
+          <div className="flex items-center justify-center gap-4 mb-4">
+            <h1 className={`text-5xl font-bold mb-6 transition-all duration-500 ${
+              cyberMode
+                ? 'text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-pink-400 to-yellow-400 animate-pulse drop-shadow-[0_0_10px_#00FFFF]'
+                : 'bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 bg-clip-text text-transparent'
+            }`}>
+              {cyberMode ? '⚡ CYBER CASCADE ⚡' : 'Color Cascade ✨'}
+            </h1>
+          </div>
+
+          {/* サイバーモード切り替えボタン */}
+          <div className="flex justify-center mb-6">
+            <button
+              onClick={() => setCyberMode(!cyberMode)}
+              className={`px-6 py-3 rounded-full font-bold transition-all duration-300 ${
+                cyberMode
+                  ? 'bg-gradient-to-r from-cyan-500 to-pink-500 text-black shadow-[0_0_20px_#00FFFF] hover:shadow-[0_0_30px_#FF00FF]'
+                  : 'bg-gradient-to-r from-purple-500 to-blue-500 text-white hover:scale-105'
+              }`}
+            >
+              {cyberMode ? '🌈 ノーマルモード' : '🔥 サイバーモード'}
+            </button>
+          </div>
           
           <div className="flex justify-center items-center gap-8 mb-6">
             <div className="bg-white rounded-lg shadow-lg p-4 min-w-[120px]">
@@ -357,10 +503,32 @@ const DesktopSlidePuzzle = () => {
             </div>
             
             <div className="bg-white rounded-lg shadow-lg p-4 min-w-[120px]">
-              <div className="text-sm text-slate-600 mb-1">手数</div>
-              <div className="text-2xl font-bold text-slate-800">{moves}</div>
+              <div className="text-sm text-slate-600 mb-1">
+                {gameState.mode === 'movechallenge' ? '残り手数' : '手数'}
+              </div>
+              <div className="text-2xl font-bold text-slate-800">
+                {gameState.mode === 'movechallenge' ? gameState.movesLeft : moves}
+              </div>
             </div>
-            
+
+            {gameState.mode === 'timeattack' && (
+              <div className={`rounded-lg shadow-lg p-4 min-w-[120px] ${
+                gameState.timeLeft <= 30 ? 'bg-gradient-to-r from-red-500 to-red-600 animate-pulse' : 'bg-blue-500'
+              }`}>
+                <div className="text-sm text-white mb-1">残り時間</div>
+                <div className="text-2xl font-bold text-white">
+                  {Math.floor(gameState.timeLeft / 60)}:{(gameState.timeLeft % 60).toString().padStart(2, '0')}
+                </div>
+              </div>
+            )}
+
+            {gameState.mode !== 'endless' && (
+              <div className="bg-purple-500 rounded-lg shadow-lg p-4 min-w-[120px]">
+                <div className="text-sm text-white mb-1">目標スコア</div>
+                <div className="text-2xl font-bold text-white">{gameState.targetScore.toLocaleString()}</div>
+              </div>
+            )}
+
             {comboCount > 0 && (
               <div className="bg-gradient-to-r from-yellow-400 to-orange-500 rounded-lg shadow-lg p-4 min-w-[120px] animate-pulse">
                 <div className="text-sm text-white mb-1">コンボ</div>
@@ -385,12 +553,51 @@ const DesktopSlidePuzzle = () => {
         <div className="flex justify-center">
           {/* ゲームボード */}
           {!gameStarted ? (
-            <div className="text-center">
+            <div className="text-center space-y-6">
+              <div className="text-lg text-slate-600 mb-8">モードを選択してください</div>
+
+              <div className="grid gap-4 max-w-2xl">
+                <button
+                  onClick={() => startGame('endless')}
+                  className="bg-gradient-to-r from-blue-500 to-purple-600 text-white px-8 py-6 rounded-xl text-lg font-bold shadow-xl hover:scale-105 transition-all duration-200"
+                >
+                  🌊 エンドレスモード
+                  <div className="text-sm opacity-90 mt-1">制限なしでのんびりプレイ</div>
+                </button>
+
+                <button
+                  onClick={() => startGame('timeattack')}
+                  className="bg-gradient-to-r from-red-500 to-pink-600 text-white px-8 py-6 rounded-xl text-lg font-bold shadow-xl hover:scale-105 transition-all duration-200"
+                >
+                  ⏰ タイムアタック
+                  <div className="text-sm opacity-90 mt-1">3分で5000点を目指せ！</div>
+                </button>
+
+                <button
+                  onClick={() => startGame('movechallenge')}
+                  className="bg-gradient-to-r from-green-500 to-emerald-600 text-white px-8 py-6 rounded-xl text-lg font-bold shadow-xl hover:scale-105 transition-all duration-200"
+                >
+                  🎯 ムーブチャレンジ
+                  <div className="text-sm opacity-90 mt-1">50手で3000点にチャレンジ</div>
+                </button>
+              </div>
+            </div>
+          ) : gameState.isGameOver || gameState.isGameWon ? (
+            <div className="text-center space-y-6">
+              <div className={`text-6xl mb-4 ${gameState.isGameWon ? 'text-green-500' : 'text-red-500'}`}>
+                {gameState.isGameWon ? '🎉' : '😔'}
+              </div>
+              <h2 className={`text-4xl font-bold mb-4 ${gameState.isGameWon ? 'text-green-600' : 'text-red-600'}`}>
+                {gameState.isGameWon ? 'ゲームクリア！' : 'ゲームオーバー'}
+              </h2>
+              <div className="text-2xl text-slate-700 mb-6">
+                最終スコア: {score.toLocaleString()}点
+              </div>
               <button
-                onClick={initializeGrid}
-                className="bg-slate-800 text-white px-12 py-6 rounded-xl text-xl font-bold shadow-xl hover:bg-slate-700 hover:scale-105 transition-all duration-200"
+                onClick={() => setGameStarted(false)}
+                className="bg-gradient-to-r from-purple-500 to-blue-600 text-white px-8 py-4 rounded-xl text-lg font-bold shadow-xl hover:scale-105 transition-all duration-200"
               >
-                ゲーム開始
+                もう一度プレイ
               </button>
             </div>
           ) : (
@@ -408,14 +615,25 @@ const DesktopSlidePuzzle = () => {
                             ? 'border-slate-800 scale-110 shadow-xl ring-4 ring-slate-300'
                             : 'border-slate-200 hover:scale-105 hover:shadow-md'
                         ) : 'border-transparent'}
-                        ${tile && animatingTiles.has(tile.id) ? 'animate-ping scale-125' : ''}
+                        ${tile && animatingTiles.has(tile.id) ? 'animate-pulse scale-110 brightness-125' : ''}
                         ${!tile ? 'bg-transparent' : ''}
                       `}
-                      style={{ 
+                      style={{
                         backgroundColor: tile ? tile.color : 'transparent',
-                        boxShadow: tile && animatingTiles.has(tile.id) 
-                          ? `0 0 20px ${tile.color}80, 0 0 40px ${tile.color}40` 
-                          : undefined
+                        boxShadow: tile && animatingTiles.has(tile.id)
+                          ? cyberMode
+                            ? `0 0 40px ${tile.color}, 0 0 80px ${tile.color}, 0 0 120px ${tile.color}, inset 0 0 30px ${tile.color}88`
+                            : `0 0 30px ${tile.color}aa, 0 0 60px ${tile.color}66, inset 0 0 20px ${tile.color}44`
+                          : cyberMode && tile
+                            ? `0 0 15px ${tile.color}66, inset 0 0 10px ${tile.color}33`
+                            : undefined,
+                        transform: tile && animatingTiles.has(tile.id)
+                          ? cyberMode
+                            ? `scale(1.2) rotate(10deg)`
+                            : `scale(1.1) rotate(5deg)`
+                          : undefined,
+                        transition: 'all 0.4s cubic-bezier(0.4, 0, 0.2, 1)',
+                        border: cyberMode && tile ? `2px solid ${tile.color}88` : undefined,
                       }}
                       disabled={animatingTiles.size > 0 || !tile}
                     >

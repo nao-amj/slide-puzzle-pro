@@ -1,13 +1,32 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
+interface Tile {
+  id: string;
+  color: string;
+  matched: boolean;
+}
+
+interface SelectedTile {
+  row: number;
+  col: number;
+  id: string;
+}
+
+interface ScoreAnimation {
+  points: number;
+  matchCount: number;
+  combo: number;
+  timestamp: number;
+}
+
 const DesktopSlidePuzzle = () => {
-  const [grid, setGrid] = useState([]);
+  const [grid, setGrid] = useState<Tile[][]>([]);
   const [score, setScore] = useState(0);
   const [moves, setMoves] = useState(0);
   const [gameStarted, setGameStarted] = useState(false);
-  const [selectedTiles, setSelectedTiles] = useState([]);
-  const [animatingTiles, setAnimatingTiles] = useState(new Set());
-  const [scoreAnimation, setScoreAnimation] = useState(null);
+  const [selectedTiles, setSelectedTiles] = useState<SelectedTile[]>([]);
+  const [animatingTiles, setAnimatingTiles] = useState(new Set<string>());
+  const [scoreAnimation, setScoreAnimation] = useState<ScoreAnimation | null>(null);
   const [comboCount, setComboCount] = useState(0);
 
   const GRID_SIZE = 8;

@@ -20,7 +20,7 @@ interface ScoreAnimation {
 }
 
 const DesktopSlidePuzzle = () => {
-  const [grid, setGrid] = useState<Tile[][]>([]);
+  const [grid, setGrid] = useState<(Tile | null)[][]>([]);
   const [score, setScore] = useState(0);
   const [moves, setMoves] = useState(0);
   const [gameStarted, setGameStarted] = useState(false);
@@ -44,9 +44,9 @@ const DesktopSlidePuzzle = () => {
 
   // グリッドを初期化
   const initializeGrid = useCallback(() => {
-    const newGrid: Tile[][] = [];
+    const newGrid: (Tile | null)[][] = [];
     for (let i = 0; i < GRID_SIZE; i++) {
-      const row: Tile[] = [];
+      const row: (Tile | null)[] = [];
       for (let j = 0; j < GRID_SIZE; j++) {
         row.push({
           id: `${i}-${j}`,
@@ -129,11 +129,13 @@ const DesktopSlidePuzzle = () => {
       let writePos = GRID_SIZE - 1;
       
       for (let row = GRID_SIZE - 1; row >= 0; row--) {
-        if (newGrid[row][col] !== null) {
+        const currentTile = newGrid[row][col];
+        if (currentTile !== null) {
           if (writePos !== row) {
             newGrid[writePos][col] = {
-              ...newGrid[row][col],
-              id: `${writePos}-${col}`
+              id: `${writePos}-${col}`,
+              color: currentTile.color,
+              matched: currentTile.matched
             };
             newGrid[row][col] = null;
           }
@@ -158,18 +160,22 @@ const DesktopSlidePuzzle = () => {
   const checkMatches = useCallback(() => {
     if (!grid.length) return;
 
-    const newGrid = grid.map(row => row.map(cell => ({ ...cell })));
+    const newGrid = grid.map(row => row.map(cell => cell ? ({ ...cell }) : null)) as (Tile | null)[][];
     let totalMatches = 0;
     let hasMatches = false;
-    let matchGroups = [];
+    let matchGroups: number[] = [];
 
     for (let i = 0; i < GRID_SIZE; i++) {
       for (let j = 0; j < GRID_SIZE; j++) {
-        if (newGrid[i][j] && !newGrid[i][j].matched) {
-          const connected = findConnectedTiles(i, j, newGrid[i][j].color);
+        const currentTile = newGrid[i][j];
+        if (currentTile && !currentTile.matched) {
+          const connected = findConnectedTiles(i, j, currentTile.color);
           if (connected.length >= 3) {
             connected.forEach(({ row, col }) => {
-              newGrid[row][col].matched = true;
+              const tileToMatch = newGrid[row][col];
+              if (tileToMatch) {
+                tileToMatch.matched = true;
+              }
             });
             totalMatches += connected.length;
             matchGroups.push(connected.length);
@@ -187,10 +193,11 @@ const DesktopSlidePuzzle = () => {
       addScore(totalMatches * 10, matchGroups.length);
       
       // 消去演出用のタイルをマーク
-      const matchedTileIds = new Set();
+      const matchedTileIds = new Set<string>();
       for (let i = 0; i < GRID_SIZE; i++) {
         for (let j = 0; j < GRID_SIZE; j++) {
-          if (newGrid[i][j] && newGrid[i][j].matched) {
+          const tile = newGrid[i][j];
+          if (tile && tile.matched) {
             matchedTileIds.add(`${i}-${j}`);
           }
         }
@@ -202,7 +209,8 @@ const DesktopSlidePuzzle = () => {
         // マッチしたタイルを削除
         for (let i = 0; i < GRID_SIZE; i++) {
           for (let j = 0; j < GRID_SIZE; j++) {
-            if (newGrid[i][j] && newGrid[i][j].matched) {
+            const tile = newGrid[i][j];
+            if (tile && tile.matched) {
               newGrid[i][j] = null;
             }
           }
@@ -284,13 +292,14 @@ const DesktopSlidePuzzle = () => {
     }
 
     // 色を一つずつシフト（nullタイルをスキップ）
-    const colors = [];
+    const colors: string[] = [];
     let currentRow = startRow;
     let currentCol = startCol;
     
     while (true) {
-      if (newGrid[currentRow][currentCol]) {
-        colors.push(newGrid[currentRow][currentCol].color);
+      const currentTileColor = newGrid[currentRow][currentCol];
+      if (currentTileColor) {
+        colors.push(currentTileColor.color);
       }
       if (currentRow === endRow && currentCol === endCol) break;
       currentRow += stepRow;
@@ -300,7 +309,9 @@ const DesktopSlidePuzzle = () => {
     if (colors.length > 1) {
       // 最後の色を最初に移動
       const lastColor = colors.pop();
-      colors.unshift(lastColor);
+      if (lastColor) {
+        colors.unshift(lastColor);
+      }
 
       // 新しい色を配置
       currentRow = startRow;
@@ -308,8 +319,9 @@ const DesktopSlidePuzzle = () => {
       let colorIndex = 0;
       
       while (true) {
-        if (newGrid[currentRow][currentCol] && colorIndex < colors.length) {
-          newGrid[currentRow][currentCol].color = colors[colorIndex];
+        const targetTile = newGrid[currentRow][currentCol];
+        if (targetTile && colorIndex < colors.length) {
+          targetTile.color = colors[colorIndex];
           colorIndex++;
         }
         if (currentRow === endRow && currentCol === endCol) break;

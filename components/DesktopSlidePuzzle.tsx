@@ -44,9 +44,9 @@ const DesktopSlidePuzzle = () => {
 
   // グリッドを初期化
   const initializeGrid = useCallback(() => {
-    const newGrid = [];
+    const newGrid: Tile[][] = [];
     for (let i = 0; i < GRID_SIZE; i++) {
-      const row = [];
+      const row: Tile[] = [];
       for (let j = 0; j < GRID_SIZE; j++) {
         row.push({
           id: `${i}-${j}`,
@@ -120,7 +120,7 @@ const DesktopSlidePuzzle = () => {
   };
 
   // タイルを落下させる
-  const applyGravity = useCallback((inputGrid) => {
+  const applyGravity = useCallback((inputGrid: (Tile | null)[][]) => {
     const newGrid = inputGrid.map(row => [...row]);
     
     // 各列に対して重力を適用
@@ -243,7 +243,7 @@ const DesktopSlidePuzzle = () => {
   };
 
   // 色をスライドする
-  const slideColors = (from, to, direction) => {
+  const slideColors = (from: any, to: any, direction: string) => {
     const newGrid = grid.map(row => row.map(cell => cell ? { ...cell } : null));
     
     let startRow, endRow, startCol, endCol, stepRow, stepCol;
